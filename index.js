@@ -67,14 +67,25 @@ class WebApi extends Events {
 }
 
 class WebApiServer extends Events {
-	constructor(io) {
+	constructor(io, options) {
 		super(true);
+		this.options = Object.assign({
+			emitTimeout: 5000
+		}, options);
+
 		this.handlers = {};
 		this.use(async (name, options, ...args) => {
+			let promises = [];
 			if (options.fromMapper) return;
-			const ret = await tools.iterate(this.handlers, async (handler, hid, iter) => {
-				iter.key(hid);
-				return await handler.emit(name, ...args);
+			tools.iterate(this.handlers, (handler, hid) => {
+				promises.push(new Promise(async (resolve) => {
+					setTimeout(() => resolve({timeout: true, hid}), this.options.emitTimeout);
+					resolve({ret: await handler.emit(name, ...args), timeout: false, hid});
+				}));
+			});
+			const ret = tools.iterate(await Promise.all(promises), (row, _, iter) => {
+				iter.key(row.hid);
+				return row.timeout ? null : row.ret;
 			}, {});
 			return {ret};
 		});
