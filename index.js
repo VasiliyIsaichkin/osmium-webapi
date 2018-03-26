@@ -26,15 +26,15 @@ class WebApi extends Events {
 	}
 
 	_initOptions() {
-		const constructEventName = (_isServer, isCmd) =>
-			`${this.options.prefix}|${_isServer ? 'server' : 'client'}|${isCmd ? this.options.eventCmd : this.options.eventCmdRet}`;
+		const constructEventName = (isServer, isCmd) =>
+			`${this.options.prefix}|${isServer ? 'server' : 'client'}|${isCmd ? this.options.eventCmd : this.options.eventCmdRet}`;
 
 		Object.assign(this.options, {
 			version         : 1,
-			cmdToTarget     : constructEventName(isServer, true),
-			cmdToTargetRet  : constructEventName(isServer, false),
-			cmdFromTarget   : constructEventName(!isServer, true),
-			cmdFromTargetRet: constructEventName(!isServer, false)
+			cmdToTarget     : constructEventName(this.isServer, true),
+			cmdToTargetRet  : constructEventName(this.isServer, false),
+			cmdFromTarget   : constructEventName(!this.isServer, true),
+			cmdFromTargetRet: constructEventName(!this.isServer, false)
 		});
 	}
 
@@ -125,9 +125,10 @@ class WebApiClient extends WebApi {
 		return new Promise((resolve) => this.socket.on('connect', resolve));
 	}
 }
-
-module.exports = {
+const exports = {
 	WebApi,
 	WebApiServer,
 	WebApiClient
 };
+
+module.exports = exports;
