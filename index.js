@@ -2,77 +2,108 @@ const Events = require('osmium-events');
 const tools = require('osmium-tools');
 
 class WebApi extends Events {
-	constructor(socket, isServer, options) {
+	constructor(socket, isServer = false, options) {
 		super();
 
+		this.isServer = isServer;
 		this.options = Object.assign({
-			prefix     : 'webApi',
-			eventCmd   : 'command',
-			eventCmdRet: 'return'
+			prefix: 'webApi'
 		}, options);
 
-		this.isServer = isServer;
-
-		this._initOptions();
+		this._init();
 
 		this.socket = socket;
 		this.socketEvents = new Events();
 
-		this.use((...args) => this.cmdHandler(...args));
-		this.socket.on(this.options.cmdToTargetRet, (packet) => this.cmdReturnHandler(packet));
+		//Outgoing command
+		this.use(async (...args) => await this.cmdHandler(...args));
+		this.socket.on(this.options.cmdToTargetRet, async (packet) => await this.cmdReturnHandler(packet));
 
-		this.socket.on(this.options.cmdFromTarget, (packet) => this.incomingCmdHandler(packet));
-		this.useAfter((...args) => this.incomingCmdReturnHandler(...args));
+		//Incoming command
+		this.socket.on(this.options.cmdFromTarget, async (packet) => await this.incomingCmdHandler(packet));
+		this.useAfter(async (...args) => await this.incomingCmdReturnHandler(...args));
 	}
 
-	_initOptions() {
-		const constructEventName = (isServer, isCmd) =>
-			`${this.options.prefix}|${isServer ? 'server' : 'client'}|${isCmd ? this.options.eventCmd : this.options.eventCmdRet}`;
+	_init() {
+		const _eventName = (isServer, cmd) =>
+			`${this.options.prefix}|${isServer ? 's' : 'c'}|${cmd ? 'c' : 'r'}`;
 
 		Object.assign(this.options, {
-			version         : 1,
-			cmdToTarget     : constructEventName(this.isServer, true),
-			cmdToTargetRet  : constructEventName(this.isServer, false),
-			cmdFromTarget   : constructEventName(!this.isServer, true),
-			cmdFromTargetRet: constructEventName(!this.isServer, false)
+			version         : 2,
+			cmdToTarget     : _eventName(this.isServer, true),
+			cmdToTargetRet  : _eventName(this.isServer, false),
+			cmdFromTarget   : _eventName(!this.isServer, true),
+			cmdFromTargetRet: _eventName(!this.isServer, false)
 		});
+
+		this._middlewaresInc = [];
+		this._middlewaresOut = [];
 	}
 
-	async incomingCmdHandler(packet) {
-		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
-		await this.emitEx(packet.name, true, {skipWebApiHandler: true, webApiPacketId: packet.id}, ...(tools.isArray(packet.args) ? packet.args : [packet.args]));
+	registerMiddlewareInc(fn) {
+		this._middlewaresInc.push(fn);
 	}
 
-	cmdReturnHandler(packet) {
-		if (!tools.isGUID(packet.id) && packet.version !== this.options.version) return;
-		this.socketEvents.emit(packet.id, packet.args);
+	registerMiddlewareOut(fn) {
+		this._middlewaresOut.push(fn);
 	}
 
-	cmdHandler(name, options, ...args) {
-		if (options.skipWebApiHandler) return tools.nop;
+
+	async cmdHandler(name, options, ...args) {
+		if (options.skipWebApiHandler) return tools.nop$(); //incomingCmdHandler via emitEx bypass
+
 		const id = tools.GUID();
 		const promise = new Promise((resolve) => {
-			//@todo: add garbage collecotor here (delete unused calls after timeout)
+			//@todo: add garbage collecotor here (delete uncalled once's after timeout)
 			this.socketEvents.once(id, (ret) => {
 				resolve({ret});
 			});
 		});
 
-		this.socket.emit(this.options.cmdToTarget, {
+		let packet = {
 			id,
 			name,
 			args,
 			version: this.options.version
-		});
+		};
+
+		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet));
+
+		this.socket.emit(this.options.cmdToTarget, packet);
 		return promise;
 	}
 
-	incomingCmdReturnHandler(name, mwConfig, ret) {
+	async incomingCmdHandler(packet) {
+		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet));
+		if (!tools.isObject(packet)) return;
+		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
+
+		await this.emitEx(packet.name, true, {skipWebApiHandler: true, webApiPacketId: packet.id}, ...(tools.isArray(packet.args) ? packet.args : [packet.args]));
+	}
+
+	async cmdReturnHandler(packet) {
+		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet));
+		if (!tools.isObject(packet)) return;
+		if (!tools.isGUID(packet.id) && packet.version !== this.options.version) return;
+
+		this.socketEvents.emit(packet.id, packet.args);
+	}
+
+	async incomingCmdReturnHandler(name, mwConfig, ret) {
 		if (!tools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
 		             ? ret[Object.keys(ret)[0]]
 		             : tools.objectToArray(ret);
-		this.socket.emit(this.options.cmdFromTargetRet, {name, id: mwConfig.webApiPacketId, args, version: this.options.version});
+		let packet = {
+			id     : mwConfig.webApiPacketId,
+			name,
+			args,
+			version: this.options.version
+		};
+
+		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet));
+
+		this.socket.emit(this.options.cmdFromTargetRet, packet);
 	}
 }
 
@@ -80,7 +111,8 @@ class WebApiServer extends Events {
 	constructor(io, options) {
 		super(true);
 		this.options = Object.assign({
-			emitTimeout: 5000
+			emitTimeout    : 5000,
+			clientProcessor: false
 		}, options);
 
 		this.handlers = {};
@@ -107,7 +139,7 @@ class WebApiServer extends Events {
 
 	registerHandler(socket) {
 		socket.on('disconnect', () => this.unRegisterHandelr(socket));
-		this.handlers[socket.id] = new WebApi(socket, true);
+		this.handlers[socket.id] = this.options.clientProcessor ? this.options.clientProcessor(socket) : new WebApi(socket, true, this.options);
 		this.handlers[socket.id].mapEvents(this);
 	};
 
@@ -117,18 +149,17 @@ class WebApiServer extends Events {
 }
 
 class WebApiClient extends WebApi {
-	constructor(socket) {
-		super(socket, false);
+	constructor(socket, options) {
+		super(socket, !!options.isServer, options);
 	}
 
 	ready() {
 		return new Promise((resolve) => this.socket.on('connect', resolve));
 	}
 }
-const exports = {
+
+module.exports = {
 	WebApi,
 	WebApiServer,
 	WebApiClient
 };
-
-module.exports = exports;
