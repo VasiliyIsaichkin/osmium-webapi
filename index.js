@@ -149,7 +149,7 @@ class WebApiServer extends Events {
 }
 
 class WebApiClient extends WebApi {
-	constructor(socket, options) {
+	constructor(socket, options = {}) {
 		super(socket, !!options.isServer, options);
 	}
 
