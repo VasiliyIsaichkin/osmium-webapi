@@ -3,9 +3,12 @@ const tools = require('osmium-tools');
 
 class WebApi extends Events {
 	constructor(socket, isServer = false, options) {
-		super();
+		super({
+			separated: true
+		});
 
 		this.isServer = isServer;
+
 		this.options = Object.assign({
 			prefix: 'webApi'
 		}, options);
@@ -14,6 +17,10 @@ class WebApi extends Events {
 
 		this.socket = socket;
 		this.socketEvents = new Events();
+
+		this.use({
+			''
+		});
 
 		//Outgoing command
 		this.use(async (...args) => await this.cmdHandler(...args));
@@ -100,7 +107,6 @@ class WebApi extends Events {
 			args,
 			version: this.options.version
 		};
-
 		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet));
 
 		this.socket.emit(this.options.cmdFromTargetRet, packet);

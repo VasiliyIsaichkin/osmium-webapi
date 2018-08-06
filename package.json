@@ -1,12 +1,12 @@
 {
-	"name": "osmium-webapi",
-	"description": "Osmium Web API",
-	"license": "MIT",
-	"author": "Vasiliy Isaichkin <vasiliy@isaichkin.ru>",
-	"repository": "https://github.com/VasiliyIsaichkin/osmium-webapi",
-	"version": "0.2.2",
+	"name"        : "osmium-webapi",
+	"description" : "Osmium Web API",
+	"license"     : "MIT",
+	"author"      : "Vasiliy Isaichkin <vasiliy@isaichkin.ru>",
+	"repository"  : "https://github.com/VasiliyIsaichkin/osmium-webapi",
+	"version"     : "0.2.3",
 	"dependencies": {
-		"osmium-tools": "^0.1.5",
-		"osmium-events": "^0.3.1"
+		"osmium-tools" : "^0.1.6",
+		"osmium-events": "^0.3.3"
 	}
 }
