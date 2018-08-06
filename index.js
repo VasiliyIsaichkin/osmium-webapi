@@ -18,10 +18,6 @@ class WebApi extends Events {
 		this.socket = socket;
 		this.socketEvents = new Events();
 
-		this.use({
-			''
-		});
-
 		//Outgoing command
 		this.use(async (...args) => await this.cmdHandler(...args));
 		this.socket.on(this.options.cmdToTargetRet, async (packet) => await this.cmdReturnHandler(packet));
