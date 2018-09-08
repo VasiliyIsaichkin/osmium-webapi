@@ -39,16 +39,16 @@ class WebApi extends Events {
 			cmdFromTargetRet: _eventName(!this.isServer, false)
 		});
 
-		this._middlewaresInc = [];
-		this._middlewaresOut = [];
+		this.middlewaresInc = [];
+		this.middlewaresOut = [];
 	}
 
 	registerMiddlewareInc(fn) {
-		this._middlewaresInc.push(fn);
+		this.middlewaresInc.push(fn);
 	}
 
 	registerMiddlewareOut(fn) {
-		this._middlewaresOut.push(fn);
+		this.middlewaresOut.push(fn);
 	}
 
 	async cmdHandler(name, options, ...args) {
@@ -69,14 +69,14 @@ class WebApi extends Events {
 			version: this.options.version
 		};
 
-		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet, socket, true));
+		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = await mwFn(packet, socket, true));
 
 		this.socket.emit(this.options.cmdToTarget, packet);
 		return promise;
 	}
 
 	async incomingCmdHandler(packet) {
-		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
+		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 
@@ -87,7 +87,7 @@ class WebApi extends Events {
 	}
 
 	async cmdReturnHandler(packet) {
-		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, false));
+		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, false));
 		if (!tools.isObject(packet)) return;
 		if (!tools.isGUID(packet.id) && packet.version !== this.options.version) return;
 
@@ -105,7 +105,7 @@ class WebApi extends Events {
 			args,
 			version: this.options.version
 		};
-		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet, this.socket, false));
+		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = await mwFn(packet, this.socket, false));
 
 		this.socket.emit(this.options.cmdFromTargetRet, packet);
 	}
@@ -122,8 +122,19 @@ class WebApiServer extends Events {
 		this.handlers = {};
 		this.use((...args) => this.emitHandler(...args));
 
+		this._middlewaresInc = [];
+		this._middlewaresOut = [];
+
 		io.on('connection', (socket) => this.registerHandler(socket));
 	};
+
+	registerMiddlewareInc(fn) {
+		this._middlewaresInc.push(fn);
+	}
+
+	registerMiddlewareOut(fn) {
+		this._middlewaresOut.push(fn);
+	}
 
 	async emitHandler(name, options, ...args) {
 		let promises = [];
@@ -143,7 +154,14 @@ class WebApiServer extends Events {
 
 	registerHandler(socket) {
 		socket.on('disconnect', () => this.unRegisterHandelr(socket));
-		this.handlers[socket.id] = this.options.clientProcessor ? this.options.clientProcessor(socket) : new WebApi(socket, true, this.options);
+		let webApiInst;
+		if (!this.options.clientProcessor) {
+			webApiInst = new WebApi(socket, true, this.options);
+			webApiInst.middlewaresInc = this._middlewaresInc;
+			webApiInst.middlewaresOut = this._middlewaresOut;
+		}
+
+		this.handlers[socket.id] = this.options.clientProcessor ? this.options.clientProcessor(socket) : webApiInst;
 		this.handlers[socket.id].mapEvents(this);
 	};
 
