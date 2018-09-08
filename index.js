@@ -51,6 +51,19 @@ class WebApi extends Events {
 		this.middlewaresOut.push(fn);
 	}
 
+	async sendRet(id, name, args) {
+		let packet = {
+			id,
+			name,
+			args,
+			version: this.options.version
+		};
+
+		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = await mwFn(packet, this.socket, true));
+
+		this.socket.emit(this.options.cmdToTarget, packet);
+	}
+
 	async cmdHandler(name, options, ...args) {
 		if (options.skipWebApiHandler) return tools.nop$(); //incomingCmdHandler via emitEx bypass
 
@@ -62,21 +75,19 @@ class WebApi extends Events {
 			});
 		});
 
-		let packet = {
-			id,
-			name,
-			args,
-			version: this.options.version
-		};
-
-		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = await mwFn(packet, socket, true));
-
-		this.socket.emit(this.options.cmdToTarget, packet);
+		await this.sendRet(id, name, args);
 		return promise;
 	}
 
 	async incomingCmdHandler(packet) {
+		if (!tools.isObject(packet)) return;
+		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
+
 		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
+		if (packet === null) {
+			await this.sendRet(tools.GUID(), packet.name, [null]);
+			return;
+		}
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 
