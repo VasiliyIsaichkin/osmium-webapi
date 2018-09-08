@@ -51,7 +51,6 @@ class WebApi extends Events {
 		this._middlewaresOut.push(fn);
 	}
 
-
 	async cmdHandler(name, options, ...args) {
 		if (options.skipWebApiHandler) return tools.nop$(); //incomingCmdHandler via emitEx bypass
 
@@ -70,22 +69,25 @@ class WebApi extends Events {
 			version: this.options.version
 		};
 
-		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet));
+		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet, socket, true));
 
 		this.socket.emit(this.options.cmdToTarget, packet);
 		return promise;
 	}
 
 	async incomingCmdHandler(packet) {
-		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet));
+		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 
-		await this.emitEx(packet.name, true, {skipWebApiHandler: true, webApiPacketId: packet.id}, ...(tools.isArray(packet.args) ? packet.args : [packet.args]));
+		await this.emitEx(packet.name, true, {
+			skipWebApiHandler: true,
+			webApiPacketId   : packet.id
+		}, ...(tools.isArray(packet.args) ? packet.args : [packet.args]));
 	}
 
 	async cmdReturnHandler(packet) {
-		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet));
+		await tools.iterate(this._middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, false));
 		if (!tools.isObject(packet)) return;
 		if (!tools.isGUID(packet.id) && packet.version !== this.options.version) return;
 
@@ -95,15 +97,15 @@ class WebApi extends Events {
 	async incomingCmdReturnHandler(name, mwConfig, ret) {
 		if (!tools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-		             ? ret[Object.keys(ret)[0]]
-		             : tools.objectToArray(ret);
+			? ret[Object.keys(ret)[0]]
+			: tools.objectToArray(ret);
 		let packet = {
 			id     : mwConfig.webApiPacketId,
 			name,
 			args,
 			version: this.options.version
 		};
-		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet));
+		await tools.iterate(this._middlewaresOut, async (mwFn) => packet = await mwFn(packet, this.socket, false));
 
 		this.socket.emit(this.options.cmdFromTargetRet, packet);
 	}
