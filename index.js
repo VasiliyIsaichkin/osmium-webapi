@@ -81,13 +81,12 @@ class WebApi extends Events {
 		let origId = packet.id;
 		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
 		if (packet === null) {
-			var rpacket = {
+			this.socket.emit(this.options.cmdFromTargetRet, {
 				id     : origId,
 				name   : origName,
-				args   : [null],
+				args   : null,
 				version: this.options.version
-			};
-			this.socket.emit(this.options.cmdFromTargetRet, rpacket);
+			});
 			return;
 		}
 		if (!tools.isObject(packet)) return;
