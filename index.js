@@ -77,12 +77,13 @@ class WebApi extends Events {
 	async incomingCmdHandler(packet) {
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
-
+		let origName = packet.name;
+		let origId = packet.id;
 		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
 		if (packet === null) {
 			var rpacket = {
-				id     : packet.id,
-				name   : packet.name,
+				id     : origId,
+				name   : origName,
 				args   : [null],
 				version: this.options.version
 			};
