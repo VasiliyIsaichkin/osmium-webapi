@@ -6,7 +6,7 @@
 	"repository"  : "https://github.com/VasiliyIsaichkin/osmium-webapi",
 	"version"     : "0.2.14",
 	"dependencies": {
-		"osmium-tools" : "^0.1.11",
-		"osmium-events": "^0.3.6"
+		"osmium-tools" : "^0.1.12",
+		"osmium-events": "^0.3.7"
 	}
 }
