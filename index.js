@@ -1,13 +1,48 @@
 const Events = require('osmium-events');
 const tools = require('osmium-tools');
 
-class WebApi extends Events {
+class WebApiProto extends Events {
+	constructor(mode, isServer) {
+		super(mode);
+		this._middlewaresInc = [];
+		this._middlewaresOut = [];
+		this._onConnect = [];
+		this._onDisconnect = [];
+
+		this.isServer = isServer;
+	}
+
+	makePacket(id, name, args) {
+		return {
+			id,
+			name,
+			args,
+			version: this.options.version
+		};
+	}
+
+	registerMiddlewareInc(fn) {
+		this._middlewaresInc.push(fn);
+	}
+
+	registerMiddlewareOut(fn) {
+		this._middlewaresOut.push(fn);
+	}
+
+	onConnect(fn) {
+		this._onConnect.push(fn);
+	}
+
+	onDisconnect(fn) {
+		this._onDisconnect.push(fn);
+	}
+}
+
+class WebApi extends WebApiProto {
 	constructor(socket, isServer = false, options) {
 		super({
 			separated: true
 		});
-
-		this.isServer = isServer;
 
 		this.options = Object.assign({
 			prefix: 'webApi'
@@ -17,6 +52,8 @@ class WebApi extends Events {
 
 		this.socket = socket;
 		this.socketEvents = new Events();
+		this.socket.on('connect', () => tools.iterate(this._onConnect, (fn) => fn(this.socket)));
+		this.socket.on('disconnect', () => tools.iterate(this._onDisconnect, (fn) => fn(this.socket)));
 
 		//Outgoing command
 		this.use(async (...args) => await this.cmdHandler(...args));
@@ -61,16 +98,12 @@ class WebApi extends Events {
 				resolve({ret});
 			});
 		});
-		let packet = {
-			id,
-			name,
-			args,
-			version: this.options.version
-		};
 
-		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = await mwFn(packet, this.socket, true));
+		let packet = this.makePacket(id, name, args);
 
-		this.socket.emit(this.options.cmdToTarget, packet);
+		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
+		if (tools.isObject(packet)) this.socket.emit(this.options.cmdToTarget, packet);
+
 		return promise;
 	}
 
@@ -79,14 +112,9 @@ class WebApi extends Events {
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 		let origName = packet.name;
 		let origId = packet.id;
-		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, true));
+		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
 		if (packet === null) {
-			this.socket.emit(this.options.cmdFromTargetRet, {
-				id     : origId,
-				name   : origName,
-				args   : null,
-				version: this.options.version
-			});
+			this.socket.emit(this.options.cmdFromTargetRet, this.makePacket(origId, origName, null));
 			return;
 		}
 		if (!tools.isObject(packet)) return;
@@ -99,7 +127,7 @@ class WebApi extends Events {
 	}
 
 	async cmdReturnHandler(packet) {
-		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = await mwFn(packet, this.socket, false));
+		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
 		if (!tools.isObject(packet)) return;
 		if (!tools.isGUID(packet.id) && packet.version !== this.options.version) return;
 
@@ -111,21 +139,18 @@ class WebApi extends Events {
 		const args = Object.keys(ret).length === 1
 			? ret[Object.keys(ret)[0]]
 			: tools.objectToArray(ret);
-		let packet = {
-			id     : mwConfig.webApiPacketId,
-			name,
-			args,
-			version: this.options.version
-		};
-		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = await mwFn(packet, this.socket, false));
+		let packet = this.makePacket(mwConfig.webApiPacketId, name, args);
+
+		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
+		if (!tools.isObject(packet)) return;
 
 		this.socket.emit(this.options.cmdFromTargetRet, packet);
 	}
 }
 
-class WebApiServer extends Events {
+class WebApiServer extends WebApiProto {
 	constructor(io, options) {
-		super(true);
+		super(true, true);
 		this.options = Object.assign({
 			emitTimeout    : 5000,
 			clientProcessor: false
@@ -134,19 +159,11 @@ class WebApiServer extends Events {
 		this.handlers = {};
 		this.use((...args) => this.emitHandler(...args));
 
-		this._middlewaresInc = [];
-		this._middlewaresOut = [];
-
-		io.on('connection', (socket) => this.registerHandler(socket));
+		io.on('connection', (socket) => {
+			this.registerHandler(socket);
+			tools.iterate(this._onConnect, (fn) => fn(socket));
+		});
 	};
-
-	registerMiddlewareInc(fn) {
-		this._middlewaresInc.push(fn);
-	}
-
-	registerMiddlewareOut(fn) {
-		this._middlewaresOut.push(fn);
-	}
 
 	async emitHandler(name, options, ...args) {
 		let promises = [];
@@ -165,7 +182,10 @@ class WebApiServer extends Events {
 	}
 
 	registerHandler(socket) {
-		socket.on('disconnect', () => this.unRegisterHandelr(socket));
+		socket.on('disconnect', () => {
+			tools.iterate(this._onDisconnect, (fn) => fn(socket));
+			this.unRegisterHandelr(socket);
+		});
 		let webApiInst;
 		if (!this.options.clientProcessor) {
 			webApiInst = new WebApi(socket, true, this.options);
