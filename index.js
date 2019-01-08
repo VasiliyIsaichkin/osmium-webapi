@@ -42,7 +42,7 @@ class WebApi extends WebApiProto {
 	constructor(socket, isServer = false, options) {
 		super({
 			separated: true
-		});
+		}, isServer);
 
 		this.options = Object.assign({
 			prefix: 'webApi'
