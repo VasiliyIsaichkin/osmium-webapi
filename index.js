@@ -4,8 +4,10 @@ const tools = require('osmium-tools');
 class WebApiProto extends Events {
 	constructor(mode, isServer) {
 		super(mode);
-		this._middlewaresInc = [];
-		this._middlewaresOut = [];
+		this.middlewaresInc = [];
+		this.middlewaresOut = [];
+		this.middlewaresIncBefore = [];
+		this.middlewaresOutBefore = [];
 		this._onConnect = [];
 		this._onDisconnect = [];
 
@@ -22,11 +24,19 @@ class WebApiProto extends Events {
 	}
 
 	registerMiddlewareInc(fn) {
-		this._middlewaresInc.push(fn);
+		this.middlewaresInc.push(fn);
 	}
 
 	registerMiddlewareOut(fn) {
-		this._middlewaresOut.push(fn);
+		this.middlewaresOut.push(fn);
+	}
+
+	registerMiddlewareIncBefore(fn) {
+		this.middlewaresIncBefore.unshift(fn);
+	}
+
+	registerMiddlewareOutBefore(fn) {
+		this.middlewaresOutBefore.unshift(fn);
 	}
 
 	onConnect(fn) {
@@ -48,7 +58,16 @@ class WebApi extends WebApiProto {
 			prefix: 'webApi'
 		}, options);
 
-		this._init();
+		const _eventName = (isServer, cmd) =>
+			`${this.options.prefix}|${isServer ? 's' : 'c'}|${cmd ? 'c' : 'r'}`;
+
+		Object.assign(this.options, {
+			version         : 2,
+			cmdToTarget     : _eventName(this.isServer, true),
+			cmdToTargetRet  : _eventName(this.isServer, false),
+			cmdFromTarget   : _eventName(!this.isServer, true),
+			cmdFromTargetRet: _eventName(!this.isServer, false)
+		});
 
 		this.socket = socket;
 		this.socketEvents = new Events();
@@ -64,33 +83,8 @@ class WebApi extends WebApiProto {
 		this.useAfter(async (...args) => await this.incomingCmdReturnHandler(...args));
 	}
 
-	_init() {
-		const _eventName = (isServer, cmd) =>
-			`${this.options.prefix}|${isServer ? 's' : 'c'}|${cmd ? 'c' : 'r'}`;
-
-		Object.assign(this.options, {
-			version         : 2,
-			cmdToTarget     : _eventName(this.isServer, true),
-			cmdToTargetRet  : _eventName(this.isServer, false),
-			cmdFromTarget   : _eventName(!this.isServer, true),
-			cmdFromTargetRet: _eventName(!this.isServer, false)
-		});
-
-		this.middlewaresInc = [];
-		this.middlewaresOut = [];
-	}
-
-	registerMiddlewareInc(fn) {
-		this.middlewaresInc.push(fn);
-	}
-
-	registerMiddlewareOut(fn) {
-		this.middlewaresOut.push(fn);
-	}
-
 	async cmdHandler(name, options, ...args) {
 		if (options.skipWebApiHandler) return tools.nop$(); //incomingCmdHandler via emitEx bypass
-
 		const id = tools.GUID();
 		const promise = new Promise((resolve) => {
 			//@todo: add garbage collecotor here (delete uncalled once's after timeout)
@@ -100,19 +94,21 @@ class WebApi extends WebApiProto {
 		});
 
 		let packet = this.makePacket(id, name, args);
+		await tools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
 
-		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
-		if (tools.isObject(packet)) this.socket.emit(this.options.cmdToTarget, packet);
+		if (packet) this.socket.emit(this.options.cmdToTarget, packet);
 
 		return promise;
 	}
 
 	async incomingCmdHandler(packet) {
+		await tools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
+
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 		let origName = packet.name;
 		let origId = packet.id;
-		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
+
 		if (packet === null) {
 			this.socket.emit(this.options.cmdFromTargetRet, this.makePacket(origId, origName, null));
 			return;
@@ -127,7 +123,7 @@ class WebApi extends WebApiProto {
 	}
 
 	async cmdReturnHandler(packet) {
-		await tools.iterate(this.middlewaresInc, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
+		await tools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
 		if (!tools.isObject(packet)) return;
 		if (!tools.isGUID(packet.id) && packet.version !== this.options.version) return;
 
@@ -141,8 +137,7 @@ class WebApi extends WebApiProto {
 			: tools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name, args);
 
-		await tools.iterate(this.middlewaresOut, async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
-		if (!tools.isObject(packet)) return;
+		await tools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
 
 		this.socket.emit(this.options.cmdFromTargetRet, packet);
 	}
@@ -174,6 +169,7 @@ class WebApiServer extends WebApiProto {
 				resolve({ret: await handler.emit(name, ...args), timeout: false, hid});
 			}));
 		});
+
 		const ret = tools.iterate(await Promise.all(promises), (row, _, iter) => {
 			iter.key(row.hid);
 			return row.timeout ? null : row.ret;
@@ -186,15 +182,18 @@ class WebApiServer extends WebApiProto {
 			tools.iterate(this._onDisconnect, (fn) => fn(socket));
 			this.unRegisterHandelr(socket);
 		});
-		let webApiInst;
-		if (!this.options.clientProcessor) {
-			webApiInst = new WebApi(socket, true, this.options);
-			webApiInst.middlewaresInc = this._middlewaresInc;
-			webApiInst.middlewaresOut = this._middlewaresOut;
-		}
 
-		this.handlers[socket.id] = this.options.clientProcessor ? this.options.clientProcessor(socket) : webApiInst;
-		this.handlers[socket.id].mapEvents(this);
+		const clientProcessor = this.options.clientProcessor
+			? this.options.clientProcessor(socket, true, this.options)
+			: new WebApi(socket, true, this.options);
+
+		clientProcessor.middlewaresInc = [].concat(clientProcessor.middlewaresInc, this.middlewaresInc);
+		clientProcessor.middlewaresIncBefore = [].concat(clientProcessor.middlewaresIncBefore, this.middlewaresIncBefore);
+		clientProcessor.middlewaresOut = [].concat(clientProcessor.middlewaresOut, this.middlewaresOut);
+		clientProcessor.middlewaresOutBefore = [].concat(clientProcessor.middlewaresOutBefore, this.middlewaresOutBefore);
+		clientProcessor.mapEvents(this);
+
+		this.handlers[socket.id] = clientProcessor;
 	};
 
 	unRegisterHandelr(socket) {
