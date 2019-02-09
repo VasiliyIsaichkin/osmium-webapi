@@ -103,16 +103,11 @@ class WebApi extends WebApiProto {
 
 	async incomingCmdHandler(packet) {
 		await tools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
-
-		if (!tools.isObject(packet)) return;
-		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
-		let origName = packet.name;
-		let origId = packet.id;
-
-		if (packet === null) {
-			this.socket.emit(this.options.cmdFromTargetRet, this.makePacket(origId, origName, null));
+		if (tools.isArray(packet)) {
+			this.socket.emit(this.options.cmdFromTargetRet, this.makePacket(packet.id, packet.name, packet[0]));
 			return;
 		}
+
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 
@@ -133,8 +128,8 @@ class WebApi extends WebApiProto {
 	async incomingCmdReturnHandler(name, mwConfig, ret) {
 		if (!tools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-			? ret[Object.keys(ret)[0]]
-			: tools.objectToArray(ret);
+		             ? ret[Object.keys(ret)[0]]
+		             : tools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name, args);
 
 		await tools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
@@ -184,8 +179,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-			? this.options.clientProcessor(socket, true, this.options)
-			: new WebApi(socket, true, this.options);
+		                        ? this.options.clientProcessor(socket, true, this.options)
+		                        : new WebApi(socket, true, this.options);
 
 		clientProcessor.middlewaresInc = [].concat(clientProcessor.middlewaresInc, this.middlewaresInc);
 		clientProcessor.middlewaresIncBefore = [].concat(clientProcessor.middlewaresIncBefore, this.middlewaresIncBefore);
