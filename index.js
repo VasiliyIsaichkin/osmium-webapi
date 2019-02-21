@@ -111,7 +111,7 @@ class WebApi extends WebApiProto {
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 
-		await this.emitEx(packet.name, true, {
+		await this.emitEx(packet.name, false, {
 			skipWebApiHandler: true,
 			webApiPacketId   : packet.id
 		}, ...(tools.isArray(packet.args) ? packet.args : [packet.args]));
@@ -156,14 +156,14 @@ class WebApiServer extends WebApiProto {
 	};
 
 	async emitHandler(name, options, ...args) {
-		let promises = [];
 		if (options.fromMapper) return;
-		tools.iterate(this.handlers, (handler, hid) => {
-			promises.push(new Promise(async (resolve) => {
-				setTimeout(() => resolve({timeout: true, hid}), this.options.emitTimeout);
+		let promises = tools.iterate(this.handlers, (handler, hid) => {
+			return new Promise(async (resolve) => {
+				const tId = setTimeout(() => resolve({timeout: true, hid}), this.options.emitTimeout);
 				resolve({ret: await handler.emit(name, ...args), timeout: false, hid});
-			}));
-		});
+				clearTimeout(tId);
+			});
+		}, []);
 
 		const ret = tools.iterate(await Promise.all(promises), (row, _, iter) => {
 			iter.key(row.hid);
