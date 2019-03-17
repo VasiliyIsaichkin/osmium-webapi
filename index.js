@@ -111,7 +111,7 @@ class WebApi extends WebApiProto {
 		if (!tools.isObject(packet)) return;
 		if (!packet.name || !tools.isGUID(packet.id) || packet.version !== this.options.version) return;
 
-		await this.emitEx(packet.name, false, {
+		await this.emitEx(packet.name, true, {
 			skipWebApiHandler: true,
 			webApiPacketId   : packet.id
 		}, ...(tools.isArray(packet.args) ? packet.args : [packet.args]));
