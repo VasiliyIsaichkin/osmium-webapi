@@ -142,13 +142,14 @@ class WebApiServer extends WebApiProto {
 	constructor(io, options) {
 		super(true, true);
 		this.options = Object.assign({
-			emitTimeout    : 5000,
+			emitTimeout    : 30000,
 			clientProcessor: false
 		}, options);
 
-		this.handlers = {};
+		this.handlers = this.options.handlers || {};
 		this.use((...args) => this.emitHandler(...args));
 
+		if (!io) return;
 		io.on('connection', (socket) => {
 			this.registerHandler(socket);
 			tools.iterate(this._onConnect, (fn) => fn(socket));
@@ -170,6 +171,16 @@ class WebApiServer extends WebApiProto {
 			return row.timeout ? null : row.ret;
 		}, {});
 		return {ret};
+	}
+
+	to(dest) {
+		const handlers = tools.iterate(tools.toArray(dest), (row, _, iter) => {
+			const sId = tools.isObject(row) ? row.id : tools.isFunction(row) ? row(this) : row;
+			if (!this.handlers[sId]) return;
+			iter.key(sId);
+			return this.handlers[sId];
+		}, {});
+		return new WebApiServer(false, {handlers});
 	}
 
 	registerHandler(socket) {

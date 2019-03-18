@@ -4,7 +4,7 @@
 	"license"     : "MIT",
 	"author"      : "Vasiliy Isaichkin <vasiliy@isaichkin.ru>",
 	"repository"  : "https://github.com/VasiliyIsaichkin/osmium-webapi",
-	"version"     : "0.2.28",
+	"version"     : "0.2.30",
 	"dependencies": {
 		"osmium-events": "^0.3.7",
 		"osmium-tools" : "^0.2.2"
