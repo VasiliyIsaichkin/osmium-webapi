@@ -1,6 +1,6 @@
 const Events = require('osmium-events');
 const oTools = require('osmium-tools');
-const {DataDecoder, DataEncoder, Serializer, Deserializer, tools} = require('osmium-serializer');
+const {Serialize, tools} = require('osmium-serializer');
 
 class WebApiProto extends Events {
 	constructor(mode, isServer) {
@@ -12,8 +12,9 @@ class WebApiProto extends Events {
 		this._onConnect = [];
 		this._onDisconnect = [];
 
-		this.serializer = new Serializer();
-		this.deserializer = new Deserializer();
+		this.serializer = new Serialize.serializer();
+		this.deserializer = new Serialize.deserializer();
+		this.packetSchema = ['version', 'id', 'name', 'args'];
 
 		this.isServer = isServer;
 	}
@@ -108,7 +109,7 @@ class WebApi extends WebApiProto {
 	}
 
 	async incomingCmdHandler(packet) {
-		packet = this.deserializer.deserialize(packet, ['version', 'id', 'name', 'args']);
+		packet = this.deserializer.deserialize(packet, this.packetSchema);
 		await oTools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, true) : false);
 		if (oTools.isArray(packet)) {
 			this.socket.emit(this.options.cmdFromTargetRet, this.serializer.serialize(this.makePacket(packet.id, packet.name, packet[0])));
@@ -125,7 +126,7 @@ class WebApi extends WebApiProto {
 	}
 
 	async cmdReturnHandler(packet) {
-		packet = this.deserializer.deserialize(packet, ['version', 'id', 'name', 'args']);
+		packet = this.deserializer.deserialize(packet, this.packetSchema);
 		await oTools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), async (mwFn) => packet = packet !== false ? await mwFn(packet, this.socket, false) : false);
 		if (!oTools.isObject(packet)) return;
 		if (!oTools.isString(packet.id) && packet.version !== this.options.version) return;
