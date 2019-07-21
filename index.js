@@ -12,11 +12,15 @@ class WebApiProto extends Events {
 		this._onConnect = [];
 		this._onDisconnect = [];
 
-		this.serializer = new Serialize.serializer();
-		this.deserializer = new Serialize.deserializer();
+		this.serializer = Serialize.serializer;
+		this.deserializer = Serialize.deserializer;
 		this.packetSchema = ['version', 'id', 'name', 'args'];
 
 		this.isServer = isServer;
+	}
+
+	useCoder(val) {
+		Serialize.use(val);
 	}
 
 	makePacket(id, name, args) {
