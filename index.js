@@ -123,7 +123,7 @@ class WebApi extends WebApiProto {
 			})] = Date.now() + this.options.onceTimeout;
 		});
 
-		let packet = this.makePacket(id, name, args);
+		let packet = this.makePacket(id, name.trim(), args);
 		await oTools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), this.mwIterate(packet));
 		if (packet) this.socket.emit(this.options.cmdToTarget, this.serializer.serialize(packet));
 
@@ -134,7 +134,7 @@ class WebApi extends WebApiProto {
 		packet = this.serializer.deserialize(packet, this.packetSchema);
 		if (!oTools.isObject(packet) || !oTools.isString(packet.id) || !oTools.isString(packet.name)) return;
 		const origId = packet.id;
-		const origName = packet.name;
+		const origName = packet.name = packet.name.trim();
 
 		await oTools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), this.mwIterate(packet));
 		if (!oTools.isObject(packet)) {
@@ -150,10 +150,13 @@ class WebApi extends WebApiProto {
 		}, ...(oTools.isArray(packet.args) ? packet.args : [packet.args]));
 	}
 
-	async cmdReturnHandler(packet) {
-		packet = this.serializer.deserialize(packet, this.packetSchema);
+	async cmdReturnHandler(serPacket) {
+		const packet = this.serializer.deserialize(serPacket, this.packetSchema);
+		if (!oTools.isObject(packet) || !oTools.isString(packet.id) || !oTools.isString(packet.name)) return;
+		packet.name = packet.name.trim();
+
 		await oTools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), this.mwIterate(packet, false));
-		if (!oTools.isObject(packet) || !oTools.isString(packet.id) && packet.version !== this.options.version) return;
+		if (!oTools.isObject(packet) || !oTools.isString(packet.id) || packet.version !== this.options.version) return;
 
 		this.socketEvents.emit(packet.id, packet.args);
 	}
@@ -163,7 +166,7 @@ class WebApi extends WebApiProto {
 		const args = Object.keys(ret).length === 1
 			? ret[Object.keys(ret)[0]]
 			: oTools.objectToArray(ret);
-		const packet = this.makePacket(mwConfig.webApiPacketId, name, args);
+		const packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), args);
 
 		await oTools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), this.mwIterate(packet, false));
 
