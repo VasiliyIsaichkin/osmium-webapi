@@ -74,7 +74,7 @@ class WebApi extends WebApiProto {
 		this.onceIds = {};
 
 		Object.assign(this.options, {
-			version         : 4,
+			version         : 5,
 			cmdToTarget     : _eventName(this.isServer, true),
 			cmdToTargetRet  : _eventName(this.isServer, false),
 			cmdFromTarget   : _eventName(!this.isServer, true),
