@@ -103,12 +103,13 @@ class WebApi extends WebApiProto {
 		}, 60000);
 	}
 
-	mwIterate(packet, before = true) {
-		return async (mwFn, _, iter) => {
+	async mwIterate(mw1, mw2, packet, before = true) {
+		await oTools.iterate([].concat(mw1, mw2), async (mwFn, _, iter) => {
 			if (!packet) return iter.break();
 			const ret = await mwFn(packet, this.socket, before);
 			packet = ret === undefined ? packet : ret;
-		};
+		});
+		return packet;
 	}
 
 	async cmdHandler(name, options, ...args) {
@@ -124,7 +125,7 @@ class WebApi extends WebApiProto {
 		});
 
 		let packet = this.makePacket(id, name.trim(), args);
-		await oTools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), this.mwIterate(packet));
+		packet = await this.mwIterate(this.middlewaresOutBefore, this.middlewaresOut, packet);
 		if (packet) this.socket.emit(this.options.cmdToTarget, this.serializer.serialize(packet));
 
 		return promise;
@@ -136,7 +137,8 @@ class WebApi extends WebApiProto {
 		const origId = packet.id;
 		const origName = packet.name = packet.name.trim();
 
-		await oTools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), this.mwIterate(packet));
+		packet = await this.mwIterate(this.middlewaresIncBefore, this.middlewaresInc, packet);
+
 		if (!oTools.isObject(packet)) {
 			this.socket.emit(this.options.cmdFromTargetRet, this.serializer.serialize(this.makePacket(origId, origName, [packet])));
 			return;
@@ -151,11 +153,12 @@ class WebApi extends WebApiProto {
 	}
 
 	async cmdReturnHandler(serPacket) {
-		const packet = this.serializer.deserialize(serPacket, this.packetSchema);
+		let packet = this.serializer.deserialize(serPacket, this.packetSchema);
 		if (!oTools.isObject(packet) || !oTools.isString(packet.id) || !oTools.isString(packet.name)) return;
 		packet.name = packet.name.trim();
 
-		await oTools.iterate([].concat(this.middlewaresIncBefore, this.middlewaresInc), this.mwIterate(packet, false));
+		packet = await this.mwIterate(this.middlewaresIncBefore, this.middlewaresInc, packet, false);
+
 		if (!oTools.isObject(packet) || !oTools.isString(packet.id) || packet.version !== this.options.version) return;
 
 		this.socketEvents.emit(packet.id, packet.args);
@@ -164,11 +167,11 @@ class WebApi extends WebApiProto {
 	async incomingCmdReturnHandler(name, mwConfig, ret) {
 		if (!oTools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-			? ret[Object.keys(ret)[0]]
-			: oTools.objectToArray(ret);
-		const packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), args);
+		             ? ret[Object.keys(ret)[0]]
+		             : oTools.objectToArray(ret);
+		let packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), args);
 
-		await oTools.iterate([].concat(this.middlewaresOutBefore, this.middlewaresOut), this.mwIterate(packet, false));
+		packet = await this.mwIterate(this.middlewaresOutBefore, this.middlewaresOut, packet, false);
 
 		this.socket.emit(this.options.cmdFromTargetRet, this.serializer.serialize(packet));
 	}
@@ -227,8 +230,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-			? this.options.clientProcessor(socket, true, this.options)
-			: new WebApi(socket, true, this.options);
+		                        ? this.options.clientProcessor(socket, true, this.options)
+		                        : new WebApi(socket, true, this.options);
 
 		clientProcessor.middlewaresInc = [].concat(clientProcessor.middlewaresInc, this.middlewaresInc);
 		clientProcessor.middlewaresIncBefore = [].concat(clientProcessor.middlewaresIncBefore, this.middlewaresIncBefore);
