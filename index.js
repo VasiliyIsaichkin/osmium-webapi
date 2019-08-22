@@ -248,13 +248,15 @@ class WebApi extends WebApiProto {
 		});
 	}
 
-	serializePacket(packet) {
-		const filtredPacket = oTools.iterate(this.packetSchema, (idx, _, iter) => {
+	filterPacket(packet) {
+		return oTools.iterate(this.packetSchema, (idx, _, iter) => {
 			iter.key(idx);
 			return packet[idx];
 		}, {});
+	}
 
-		return this.serializer.serialize(filtredPacket);
+	serializePacket(packet) {
+		return this.serializer.serialize(this.filterPacket(packet));
 	}
 
 	checkPacket(packet) {
