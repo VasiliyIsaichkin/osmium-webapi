@@ -23,6 +23,10 @@ class WebApiProto extends Events {
 			NORMAL: 1000,
 			LAST  : 1990
 		};
+		this.emitters = {
+			meta   : '~M7PN9OehiioEmGFHNU-C4Frvm',
+			timeout: '~4AP2K7lq183qFj39fe-UVG5a4'
+		};
 	}
 
 	useCoder(...args) {
@@ -150,12 +154,28 @@ class WebApi extends WebApiProto {
 		this.useAfter(async (...args) => await this.outcomingRetHandler(...args));
 
 		setInterval(() => {
-			oTools.iterate(this.onceIds, (time, id) => {
-				if (time >= Date.now()) return;
-				this.socketEvents.off(id);
+			oTools.iterate(this.onceIds, (once, id) => {
+				if (once.t >= Date.now()) return;
+				this.socketEvents.emit(once.id, []);
 				delete this.onceIds[id];
 			});
-		}, this.options.timeout + 1000);
+		}, 5000);
+	}
+
+	_makeEmitter(what, id) {
+		const eventRelay = new Events();
+		eventRelay.use((_, __, ...args) => [{what, id}, ...args]);
+		eventRelay.mapEvents(this);
+		eventRelay.useAfter((_, __, ...args) => args[0][0]);
+		return eventRelay;
+	}
+
+	meta(what) {
+		return this._makeEmitter(what, this.emitters.meta);
+	}
+
+	timeout(ms) {
+		return this._makeEmitter(ms, this.emitters.timeout);
 	}
 
 	_extractFunctionArgs(fn) {
@@ -246,11 +266,37 @@ class WebApi extends WebApiProto {
 		       && packet.version === WebApiProtoVersion;
 	}
 
+	_getEmitterById(id) {
+		let ret = false;
+		oTools.iterate(this.emitters, (val, idx, iter) => {
+			if (val !== id) return;
+			iter.break();
+			ret = idx;
+		});
+		return ret;
+	}
+
 	async outcomingCmdHandler(name, options, ...args) {
 		if (options.skipWebApiHandler) return oTools.nop$(); //incomingCmdHandler via emitEx bypass
 
+		let timeout = this.options.timeout;
 		const id = oTools.UID('^');
 		const packet = this.makePacket(id, name.trim(), args);
+
+		if (oTools.isObject(args[0]) && args[0].id && !oTools.isUndefined(args[0].what)) {
+			const emitter = this._getEmitterById(args[0].id);
+			if (emitter) {
+				switch (emitter) {
+					case 'timeout':
+						timeout = args[0].what;
+						break;
+					case'meta':
+						Object.assign(packet.meta, args[0].what);
+						break;
+				}
+				args.splice(0, 1);
+			}
+		}
 
 		await this.mwIterate(this.middlewaresOut, packet, false);
 
@@ -259,7 +305,7 @@ class WebApi extends WebApiProto {
 
 		const promise = new Promise((resolve) => {
 			const onceId = this.socketEvents.once(id, (ret) => resolve({ret}));
-			this.onceIds[onceId] = Date.now() + this.options.timeout;
+			this.onceIds[onceId] = {t: Date.now() + timeout, id};
 		});
 
 		if (packet && !this.isLocal) this.socket.emit(this.options.cmdToTarget, this.serializePacket(packet));
@@ -305,8 +351,8 @@ class WebApi extends WebApiProto {
 	async outcomingRetHandler(name, mwConfig, ret) {
 		if (!oTools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-			? ret[Object.keys(ret)[0]]
-			: oTools.objectToArray(ret);
+		             ? ret[Object.keys(ret)[0]]
+		             : oTools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), [args]);
 
 		await this.mwIterate(this.middlewaresInc, packet, true);
@@ -397,8 +443,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-			? this.options.clientProcessor(socket, true, this.options)
-			: new WebApi(socket, true, this.options);
+		                        ? this.options.clientProcessor(socket, true, this.options)
+		                        : new WebApi(socket, true, this.options);
 
 		this.assignMw(clientProcessor);
 		clientProcessor.mapEvents(this);
