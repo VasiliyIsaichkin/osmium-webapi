@@ -8,8 +8,10 @@ class WebApiProto extends Events {
 	constructor(options, isServer) {
 		super();
 		this.options = options;
-		this.middlewaresInc = {};
-		this.middlewaresOut = {};
+		const mwI = {};
+		const mwO = {};
+		this.middlewaresInc = mwI;
+		this.middlewaresOut = mwO;
 		this.onConnects = [];
 		this.onDisconnects = [];
 
@@ -365,8 +367,8 @@ class WebApi extends WebApiProto {
 	async outcomingRetHandler(name, mwConfig, ret) {
 		if (!oTools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-		             ? ret[Object.keys(ret)[0]]
-		             : oTools.objectToArray(ret);
+			? ret[Object.keys(ret)[0]]
+			: oTools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), [args]);
 
 		await this.mwIterate(this.middlewaresInc, packet, true);
@@ -437,8 +439,11 @@ class WebApiServer extends WebApiProto {
 	}
 
 	assignMw(clientProcessor) {
-		Object.assign(clientProcessor.middlewaresInc, this.middlewaresInc);
-		Object.assign(clientProcessor.middlewaresOut, this.middlewaresOut);
+		Object.assign(this.middlewaresInc, clientProcessor.middlewaresInc);
+		clientProcessor.middlewaresInc = this.middlewaresInc;
+
+		Object.assign(this.middlewaresOut, clientProcessor.middlewaresOut);
+		clientProcessor.middlewaresOut = this.middlewaresOut;
 	}
 
 	local() {
@@ -457,8 +462,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-		                        ? this.options.clientProcessor(socket, true, this.options)
-		                        : new WebApi(socket, true, this.options);
+			? this.options.clientProcessor(socket, true, this.options)
+			: new WebApi(socket, true, this.options);
 
 		this.assignMw(clientProcessor);
 		clientProcessor.mapEvents(this);
