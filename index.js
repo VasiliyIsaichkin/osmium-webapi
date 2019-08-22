@@ -233,7 +233,6 @@ class WebApi extends WebApiProto {
 			await oTools.iterate(mwRow, async (mw, _, iter2) => {
 				if (mw.isAfter !== null && mw.isAfter !== isAfter) return;
 				packet.injects.mwAffected.push(mw.id);
-
 				const ret = await mw.fn.apply(packet.injects, this._injectToArgs(mw.fn, packet.injects, []));
 				if (!oTools.isUndefined(ret)) {
 					packet.breaked = true;
@@ -425,8 +424,8 @@ class WebApiServer extends WebApiProto {
 	}
 
 	assignMw(clientProcessor) {
-		clientProcessor.middlewaresInc = this.middlewaresInc;
-		clientProcessor.middlewaresOut = this.middlewaresOut;
+		Object.assign(clientProcessor.middlewaresInc, this.middlewaresInc);
+		Object.assign(clientProcessor.middlewaresOut, this.middlewaresOut);
 	}
 
 	local() {
