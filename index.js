@@ -227,6 +227,18 @@ class WebApi extends WebApiProto {
 			skipMw      : () => packet.skipMw = true
 		});
 
+		function _update() {
+			Object.assign(packet.injects, {
+				packet,
+				id  : packet.id,
+				name: packet.name,
+				args: packet.args,
+				meta: packet.meta
+			});
+		}
+
+		_update();
+
 		await oTools.iterate(mwStorage, async (mwRow, idx, iter1) => {
 			if (!packet) return iter1.break();
 
@@ -234,6 +246,7 @@ class WebApi extends WebApiProto {
 				if (mw.isAfter !== null && mw.isAfter !== isAfter) return;
 				packet.injects.mwAffected.push(mw.id);
 				const ret = await mw.fn.apply(packet.injects, this._injectToArgs(mw.fn, packet.injects, []));
+				_update();
 				if (!oTools.isUndefined(ret)) {
 					packet.breaked = true;
 					packet.args = [ret];
