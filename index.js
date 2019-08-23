@@ -349,7 +349,7 @@ class WebApi extends WebApiProto {
 		if (!oTools.isObject(packet) || packet.dropped) return;
 
 		if (packet.breaked) {
-			this.socket.emit(this.options.cmdFromTargetRet, this.serializePacket(packet));
+			await this.outcomingRetHandler(packet.name, {webApiPacketId: packet.id}, {'mwIncBefore': packet.args[0]});
 			return;
 		}
 
@@ -367,8 +367,8 @@ class WebApi extends WebApiProto {
 	async outcomingRetHandler(name, mwConfig, ret) {
 		if (!oTools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-			? ret[Object.keys(ret)[0]]
-			: oTools.objectToArray(ret);
+		             ? ret[Object.keys(ret)[0]]
+		             : oTools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), [args]);
 
 		await this.mwIterate(this.middlewaresInc, packet, true);
@@ -462,8 +462,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-			? this.options.clientProcessor(socket, true, this.options)
-			: new WebApi(socket, true, this.options);
+		                        ? this.options.clientProcessor(socket, true, this.options)
+		                        : new WebApi(socket, true, this.options);
 
 		this.assignMw(clientProcessor);
 		clientProcessor.mapEvents(this);
