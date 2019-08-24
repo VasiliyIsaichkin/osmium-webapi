@@ -46,6 +46,12 @@ class WebApiProto extends Events {
 		};
 	}
 
+	_makeEmitter(what, id) {
+		return {
+			emit: async (name, ...args) => await this.emit(name, {what, id}, ...args)
+		};
+	}
+
 	_registerMiddleware(storage, idx, fn, isAfter) {
 		if (oTools.isFunction(idx)) {
 			fn = idx;
@@ -162,14 +168,6 @@ class WebApi extends WebApiProto {
 				delete this.onceIds[id];
 			});
 		}, 5000);
-	}
-
-	_makeEmitter(what, id) {
-		const eventRelay = new Events();
-		eventRelay.use((_, __, ...args) => [{what, id}, ...args]);
-		eventRelay.mapEvents(this);
-		eventRelay.useAfter((_, __, ...args) => args[0][0]);
-		return eventRelay;
 	}
 
 	meta(what) {
@@ -306,7 +304,7 @@ class WebApi extends WebApiProto {
 					case 'timeout':
 						timeout = args[0].what;
 						break;
-					case'meta':
+					case 'meta':
 						Object.assign(packet.meta, args[0].what);
 						break;
 				}
@@ -426,6 +424,10 @@ class WebApiServer extends WebApiProto {
 			return row.timeout ? null : row.ret;
 		}, {});
 		return {ret};
+	}
+
+	meta(what) {
+		return this._makeEmitter(what, this.emitters.meta);
 	}
 
 	to(dest) {
