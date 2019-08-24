@@ -211,12 +211,17 @@ class WebApi extends WebApiProto {
 			socket      : this.socket,
 			isAfter     : isAfter,
 			isBefore    : !isAfter,
+			isServer    : this.isServer,
+			isLocal     : this.isLocal,
 			minddlewares: mwStorage,
 			instance    : this,
 			mwAffected  : [],
 			setArgs     : (args) => packet.args = args,
 			setArg      : (idx, val) => packet.args[idx] = val,
-			add         : (key, value) => packet.injects[key] = value,
+			add         : (key, value) => {
+				if (oTools.isString(key)) packet.injects[key] = value;
+				if (oTools.isObject(key)) Object.assign(packet.injects, key);
+			},
 			del         : (key) => delete packet.injects[key],
 			get         : (key) => packet.injects[key],
 			drop        : () => packet.dropped = true,
@@ -268,7 +273,11 @@ class WebApi extends WebApiProto {
 	}
 
 	serializePacket(packet) {
-		return this.serializer.serialize(this.filterPacket(packet));
+		try {
+			return this.serializer.serialize(this.filterPacket(packet));
+		} catch (e) {
+			throw new Error('Cant serialize args');
+		}
 	}
 
 	checkPacket(packet) {
@@ -339,7 +348,10 @@ class WebApi extends WebApiProto {
 	}
 
 	async incomingCmdHandler(rawPacket) {
-		const packet = this.serializer.deserialize(rawPacket, this.packetSchema);
+		let packet = false;
+		try {
+			packet = this.serializer.deserialize(rawPacket, this.packetSchema);
+		} catch (e) { }
 		if (!this.checkPacket(packet)) return;
 
 		await this.mwIterate(this.middlewaresInc, packet, false);
@@ -365,8 +377,8 @@ class WebApi extends WebApiProto {
 	async outcomingRetHandler(name, mwConfig, ret) {
 		if (!oTools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-		             ? ret[Object.keys(ret)[0]]
-		             : oTools.objectToArray(ret);
+			? ret[Object.keys(ret)[0]]
+			: oTools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), [args]);
 
 		await this.mwIterate(this.middlewaresInc, packet, true);
@@ -464,8 +476,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-		                        ? this.options.clientProcessor(socket, true, this.options)
-		                        : new WebApi(socket, true, this.options);
+			? this.options.clientProcessor(socket, true, this.options)
+			: new WebApi(socket, true, this.options);
 
 		this.assignMw(clientProcessor);
 		clientProcessor.mapEvents(this);
