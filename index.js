@@ -276,7 +276,8 @@ class WebApi extends WebApiProto {
 		try {
 			return this.serializer.serialize(this.filterPacket(packet));
 		} catch (e) {
-			throw new Error('Cant serialize args');
+			if (!packet.name) console.log('Error in serializePacket, incorrect packet: ', packet);
+			throw new Error(`Cant filter/serialize packet in [${packet.name}], serializer error - ${e}`);
 		}
 	}
 
@@ -377,8 +378,8 @@ class WebApi extends WebApiProto {
 	async outcomingRetHandler(name, mwConfig, ret) {
 		if (!oTools.isObject(ret) || !mwConfig.webApiPacketId) return;
 		const args = Object.keys(ret).length === 1
-			? ret[Object.keys(ret)[0]]
-			: oTools.objectToArray(ret);
+		             ? ret[Object.keys(ret)[0]]
+		             : oTools.objectToArray(ret);
 		let packet = this.makePacket(mwConfig.webApiPacketId, name.trim(), [args]);
 
 		await this.mwIterate(this.middlewaresInc, packet, true);
@@ -476,8 +477,8 @@ class WebApiServer extends WebApiProto {
 		});
 
 		const clientProcessor = this.options.clientProcessor
-			? this.options.clientProcessor(socket, true, this.options)
-			: new WebApi(socket, true, this.options);
+		                        ? this.options.clientProcessor(socket, true, this.options)
+		                        : new WebApi(socket, true, this.options);
 
 		this.assignMw(clientProcessor);
 		clientProcessor.mapEvents(this);
