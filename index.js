@@ -92,7 +92,7 @@ class WebApiProto extends Events {
 	}
 
 	middlewareWrap(idx, fn) {
-		return this._registerMiddleware(this.middlewaresWrap, idx, fn, true);
+		return this._registerMiddleware(this.middlewaresWrap, idx, fn, false);
 	}
 
 	middlewareOut(idx, fn, isAfter = null) {
@@ -370,20 +370,22 @@ class WebApi extends WebApiProto {
 			return;
 		}
 
-
-		return this.middlewareWrap.reverse().reduce(
-			(next, middleware) => async () => await middleware.fn(next),
-			async () =>
-				await this.emitEx(packet.name, true, {
-					context          : packet.injects || {},
-					preCall          : (cb, args, id) => {
-						packet.injects.eventId = id;
-						return this._injectToArgs(cb, packet.injects, args);
-					},
-					skipWebApiHandler: true,
-					webApiPacketId   : packet.id
-				}, ...packet.args)
-		);
+		return await Object.values(this.middlewaresWrap)
+			.reverse()
+			.flatMap(middlewares => middlewares)
+			.reduce(
+				(next, middleware) => async () => await middleware.fn(next),
+				async () =>
+					await this.emitEx(packet.name, true, {
+						context          : packet.injects || {},
+						preCall          : (cb, args, id) => {
+							packet.injects.eventId = id;
+							return this._injectToArgs(cb, packet.injects, args);
+						},
+						skipWebApiHandler: true,
+						webApiPacketId   : packet.id
+					}, ...packet.args)
+			)();
 	}
 
 	async outcomingRetHandler(name, mwConfig, ret) {
@@ -467,6 +469,9 @@ class WebApiServer extends WebApiProto {
 	assignMw(clientProcessor) {
 		Object.assign(this.middlewaresInc, clientProcessor.middlewaresInc);
 		clientProcessor.middlewaresInc = this.middlewaresInc;
+
+		Object.assign(this.middlewaresWrap, clientProcessor.middlewaresWrap);
+		clientProcessor.middlewaresWrap = this.middlewaresWrap;
 
 		Object.assign(this.middlewaresOut, clientProcessor.middlewaresOut);
 		clientProcessor.middlewaresOut = this.middlewaresOut;
