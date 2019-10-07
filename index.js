@@ -9,8 +9,10 @@ class WebApiProto extends Events {
 		super();
 		this.options = options;
 		const mwI = {};
+		const mwW = {};
 		const mwO = {};
 		this.middlewaresInc = mwI;
+		this.middlewaresWrap = mwW;
 		this.middlewaresOut = mwO;
 		this.onConnects = [];
 		this.onDisconnects = [];
@@ -87,6 +89,10 @@ class WebApiProto extends Events {
 
 	middlewareInc(idx, fn, isAfter = null) {
 		return this._registerMiddleware(this.middlewaresInc, idx, fn, isAfter);
+	}
+
+	middlewareWrap(idx, fn) {
+		return this._registerMiddleware(this.middlewaresWrap, idx, fn, true);
 	}
 
 	middlewareOut(idx, fn, isAfter = null) {
@@ -364,15 +370,20 @@ class WebApi extends WebApiProto {
 			return;
 		}
 
-		await this.emitEx(packet.name, true, {
-			context          : packet.injects || {},
-			preCall          : (cb, args, id) => {
-				packet.injects.eventId = id;
-				return this._injectToArgs(cb, packet.injects, args);
-			},
-			skipWebApiHandler: true,
-			webApiPacketId   : packet.id
-		}, ...packet.args);
+
+		return this.middlewareWrap.reverse().reduce(
+			(next, middleware) => async () => await middleware.fn(next),
+			async () =>
+				await this.emitEx(packet.name, true, {
+					context          : packet.injects || {},
+					preCall          : (cb, args, id) => {
+						packet.injects.eventId = id;
+						return this._injectToArgs(cb, packet.injects, args);
+					},
+					skipWebApiHandler: true,
+					webApiPacketId   : packet.id
+				}, ...packet.args)
+		);
 	}
 
 	async outcomingRetHandler(name, mwConfig, ret) {
