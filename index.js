@@ -370,22 +370,28 @@ class WebApi extends WebApiProto {
 			return;
 		}
 
-		return await Object.values(this.middlewaresWrap)
-			.reverse()
-			.flatMap(middlewares => middlewares)
-			.reduce(
-				(next, middleware) => async () => await middleware.fn(next),
+		const middlewareReturn = (ret) =>
+			this.outcomingRetHandler(packet.name, {webApiPacketId: packet.id}, {'mwIncBefore': ret});
+
+		const handler = Object.values(this.middlewaresWrap)
+		   .reverse()
+		   .flatMap(middlewares => middlewares)
+		   .reduce(
+				(next, middleware) =>
+					async () =>
+						await middleware.fn(packet, next, middlewareReturn),
 				async () =>
 					await this.emitEx(packet.name, true, {
 						context          : packet.injects || {},
-						preCall          : (cb, args, id) => {
+						preCall          : async (cb, args, id) => {
 							packet.injects.eventId = id;
 							return this._injectToArgs(cb, packet.injects, args);
 						},
 						skipWebApiHandler: true,
 						webApiPacketId   : packet.id
 					}, ...packet.args)
-			)();
+			);
+		return await handler();
 	}
 
 	async outcomingRetHandler(name, mwConfig, ret) {
